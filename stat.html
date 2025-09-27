@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#121212">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Stats Basket">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stat Match Basket</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #121212;
+            color: #f0f0f0;
+        }
+        h2, h3 { color: #fff; }
+        table {
+            border-collapse: collapse;
+            margin-top: 20px;
+            width: 100%;
+            table-layout: fixed;
+        }
+        th, td {
+            border: 1px solid #444;
+            padding: 6px;
+            text-align: center;
+            color: #f0f0f0;
+        }
+        tr:nth-child(even) { background-color: #1e1e1e; }
+        tr:nth-child(odd) { background-color: #2a2a2a; }
+        input[type="text"], select, input[type="date"] {
+            padding: 5px;
+            margin-right: 10px;
+            background-color: #2a2a2a;
+            color: #f0f0f0;
+            border: 1px solid #444;
+        }
+        button {
+            padding: 5px 10px;
+            background-color: #333;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover { background-color: #555; }
+        #player-list { margin-top: 10px; color: #ccc; }
+        .player-entry {
+            display: flex;
+            align-items: center;
+            margin-top: 5px;
+        }
+        .player-entry button {
+            margin-left: 10px;
+            background-color: #c62828;
+        }
+        #main-interface { display: none; }
+    </style>
+</head>
+<body>
+    <h2>Stat Match Basket</h2>
+
+    <div id="start-screen">
+        <button onclick="startNewMatch()">Nouveau match</button>
+        <button onclick="document.getElementById('file-input').click()">Charger un match</button>
+        <input type="file" id="file-input" accept=".json" style="display:none" onchange="loadMatchFromFile(event)">
+    </div>
+
+    <div id="main-interface">
+        <div id="match-setup">
+            <label for="match-date">Date du match :</label>
+            <input type="date" id="match-date" required>
+            <label for="opponent">Adversaire :</label>
+            <input type="text" id="opponent" placeholder="Nom de l'équipe adverse" required>
+            <label for="location">Lieu :</label>
+            <select id="location">
+                <option value="Domicile">Domicile</option>
+                <option value="Extérieur">Extérieur</option>
+            </select>
+            <br><br>
+            <label for="player-input">Nom de la joueuse :</label>
+            <input type="text" id="player-input" placeholder="Entrez un nom">
+            <button onclick="addPlayer()">+ Ajouter</button>
+            <div id="player-list"></div>
+            <br>
+            <label for="quarter">Quart-temps :</label>
+            <select id="quarter" onchange="onQuarterChange()">
+                <option value="Q1">Q1</option>
+                <option value="Q2">Q2</option>
+                <option value="Q3">Q3</option>
+                <option value="Q4">Q4</option>
+                <option value="OT">OT</option>
+            </select>
+            <label for="time-left">Temps restant :</label>
+            <input type="text" id="time-left" placeholder="ex: 03:45">
+            <label for="video-name">Fichier vidéo :</label>
+            <input type="text" id="video-name" placeholder="ex: match-2024.mp4">
+            <br>
+            <button onclick="validateMatchSetup()">Valider les infos</button>
+        </div>
+
+        <div id="match-info" style="margin-bottom:20px;"></div>
+        <div id="table-container"></div>
+        <div id="summary-table"></div>
+        <button onclick="exportCSV()">📤 Exporter CSV</button>
+        <button onclick="exportJSON()">📥 Exporter JSON</button>
+    </div>
+
+    <script>
+        const stats = [
+            "Points", "Tir Tenté", "Tir réussi", "% Tir réussi",
+            "3PT tenté", "3PT réussi", "% 3PT réussi",
+            "Lancer franc Tenté", "Lancer franc réussi", "% Lancer franc réussi",
+            "Passe D", "Rebond offensif", "Rebond défensif",
+            "Interception", "Contre", "Ballon perdu",
+            "Faute commise", "Faute provoquée",
+        ];
+
+        let players = [];
+        let currentMatch = { date:'', opponent:'', location:'', video:'', timeLeft:'', statsData:{} };
+        let currentQuarter = "Q1";
+
+        // ---- fonctions utilitaires joueurs
+        function startNewMatch() {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('main-interface').style.display = 'block';
+            players = [];
+            currentMatch = { date:'', opponent:'', location:'', video:'', timeLeft:'', statsData:{} };
+            currentQuarter = "Q1";
+            document.getElementById('match-date').value = '';
+            document.getElementById('opponent').value = '';
+            document.getElementById('location').value = 'Domicile';
+            document.getElementById('video-name').value = '';
+            document.getElementById('player-list').innerHTML = '';
+            document.getElementById('player-input').value = '';
+            document.getElementById('quarter').value = currentQuarter;
+            document.getElementById('time-left').value = '';
+            document.getElementById('table-container').innerHTML = '';
+            document.getElementById('summary-table').innerHTML = '';
+            document.getElementById('match-info').innerHTML = '';
+        }
+        function addPlayer() {
+            const input = document.getElementById("player-input");
+            const name = input.value.trim();
+            if (name && !players.includes(name)) {
+                players.push(name);
+                input.value = "";
+                updatePlayerList();
+            }
+        }
+        function removePlayer(name) {
+            players = players.filter(p => p !== name);
+            updatePlayerList();
+            for (let q in currentMatch.statsData) {
+                if (currentMatch.statsData[q][name]) delete currentMatch.statsData[q][name];
+            }
+            generateTable();
+        }
+        function updatePlayerList() {
+            const listDiv = document.getElementById("player-list");
+            listDiv.innerHTML = "<strong>Joueuses :</strong><br>";
+            players.forEach(name => {
+                const entry = document.createElement("div");
+                entry.className = "player-entry";
+                entry.innerHTML = `${name} <button onclick="removePlayer('${name}')">❌</button>`;
+                listDiv.appendChild(entry);
+            });
+        }
+        function initStatsDataForQuarter(quarter) {
+            if (!currentMatch.statsData[quarter]) currentMatch.statsData[quarter] = {};
+            players.forEach(p => {
+                if (!currentMatch.statsData[quarter][p]) {
+                    currentMatch.statsData[quarter][p] = {};
+                    stats.forEach(stat => currentMatch.statsData[quarter][p][stat] = 0);
+                }
+            });
+        }
+
+        // ---- TABLEAU QUART TEMPS
+        function generateTable() {
+            if (players.length === 0) {
+                document.getElementById('table-container').innerHTML = "<p>Aucune joueuse ajoutée.</p>";
+                return;
+            }
+            initStatsDataForQuarter(currentQuarter);
+            let html = `<table><thead><tr><th>Joueuse</th>`;
+            stats.forEach(stat => { html += `<th>${stat}</th>`; });
+            html += `</tr></thead><tbody>`;
+
+            players.forEach(player => {
+                html += `<tr><td>${player}</td>`;
+                stats.forEach(stat => {
+                    const val = currentMatch.statsData[currentQuarter][player][stat];
+                    if (stat === "Points") {
+                        const pts = 2 * currentMatch.statsData[currentQuarter][player]["Tir réussi"]
+                                  + 3 * currentMatch.statsData[currentQuarter][player]["3PT réussi"]
+                                  + 1 * currentMatch.statsData[currentQuarter][player]["Lancer franc réussi"];
+                        currentMatch.statsData[currentQuarter][player]["Points"] = pts;
+                        html += `<td>${pts}</td>`;
+                    } else if (stat.includes("%")) {
+                        let pct = "-";
+                        if (stat === "% Tir réussi") {
+                            const r = currentMatch.statsData[currentQuarter][player]["Tir réussi"];
+                            const t = currentMatch.statsData[currentQuarter][player]["Tir Tenté"];
+                            pct = t > 0 ? `${Math.round((r/t)*100)}%` : "-";
+                        } else if (stat === "% 3PT réussi") {
+                            const r = currentMatch.statsData[currentQuarter][player]["3PT réussi"];
+                            const t = currentMatch.statsData[currentQuarter][player]["3PT tenté"];
+                            pct = t > 0 ? `${Math.round((r/t)*100)}%` : "-";
+                        } else if (stat === "% Lancer franc réussi") {
+                            const r = currentMatch.statsData[currentQuarter][player]["Lancer franc réussi"];
+                            const t = currentMatch.statsData[currentQuarter][player]["Lancer franc Tenté"];
+                            pct = t > 0 ? `${Math.round((r/t)*100)}%` : "-";
+                        }
+                        html += `<td>${pct}</td>`;
+                    } else {
+                        html += `<td>
+                            <div style="display:flex; align-items:center; justify-content:center; gap:6px;">
+                                <button onclick="changeStat('${player}', '${stat}', -1)">-</button>
+                                <span>${val}</span>
+                                <button onclick="changeStat('${player}', '${stat}', 1)">+</button>
+                            </div>
+                        </td>`;
+                    }
+                });
+                html += `</tr>`;
+            });
+
+            // Ligne Total du quart
+            html += `<tr style="font-weight:bold; background-color:#333;"><td>Total</td>`;
+            stats.forEach(stat => {
+                if (stat.includes("%")) {
+                    let pct = "-";
+                    if (stat === "% Tir réussi") {
+                        const r = players.reduce((s,p)=>s+currentMatch.statsData[currentQuarter][p]["Tir réussi"],0);
+                        const t = players.reduce((s,p)=>s+currentMatch.statsData[currentQuarter][p]["Tir Tenté"],0);
+                        pct = t>0?`${Math.round((r/t)*100)}%`:"-";
+                    } else if (stat === "% 3PT réussi") {
+                        const r = players.reduce((s,p)=>s+currentMatch.statsData[currentQuarter][p]["3PT réussi"],0);
+                        const t = players.reduce((s,p)=>s+currentMatch.statsData[currentQuarter][p]["3PT tenté"],0);
+                        pct = t>0?`${Math.round((r/t)*100)}%`:"-";
+                    } else if (stat === "% Lancer franc réussi") {
+                        const r = players.reduce((s,p)=>s+currentMatch.statsData[currentQuarter][p]["Lancer franc réussi"],0);
+                        const t = players.reduce((s,p)=>s+currentMatch.statsData[currentQuarter][p]["Lancer franc Tenté"],0);
+                        pct = t>0?`${Math.round((r/t)*100)}%`:"-";
+                    }
+                    html += `<td>${pct}</td>`;
+                } else {
+                    const total = players.reduce((s,p)=>s+currentMatch.statsData[currentQuarter][p][stat],0);
+                    html += `<td>${total}</td>`;
+                }
+            });
+            html += `</tr></tbody></table>`;
+
+            // Injecter les deux tableaux
+            document.getElementById('table-container').innerHTML = html;
+            document.getElementById('table-container').innerHTML += generateSummaryForCurrentMatch();
+        }
+
+        // ---- TABLEAU RECAP MATCH
+        function generateSummaryForCurrentMatch() {
+            if (players.length === 0) return "";
+            let totalStatsPerPlayer = {};
+            players.forEach(p=>{
+                totalStatsPerPlayer[p]={};
+                stats.forEach(stat=> totalStatsPerPlayer[p][stat]=0);
+            });
+            for (let quarter in currentMatch.statsData) {
+                for (let player in currentMatch.statsData[quarter]) {
+                    stats.forEach(stat=>{
+                        totalStatsPerPlayer[player][stat]+=currentMatch.statsData[quarter][player][stat]||0;
+                    });
+                }
+            }
+            let html = "<h3>Récapitulatif du match en cours</h3>";
+            html += `<table><thead><tr><th>Joueuse</th>`;
+            stats.forEach(stat=>{ html+=`<th>${stat}</th>`; });
+            html += `</tr></thead><tbody>`;
+            players.forEach(player=>{
+                html += `<tr><td>${player}</td>`;
+                stats.forEach(stat=>{
+                    html += `<td>${totalStatsPerPlayer[player][stat]}</td>`;
+                });
+                html += `</tr>`;
+            });
+            // ligne total équipe
+            html += `<tr style="font-weight:bold; background-color:#333; color:white;"><td>Total équipe</td>`;
+            stats.forEach(stat=>{
+                const teamTot = players.reduce((s,p)=>s+totalStatsPerPlayer[p][stat],0);
+                html += `<td>${teamTot}</td>`;
+            });
+            html += `</tr></tbody></table>`;
+            return html;
+        }
+
+        // ---- actions
+        function changeStat(player,stat,delta){
+            let v=currentMatch.statsData[currentQuarter][player][stat];
+            let nv=v+delta; if(nv<0)nv=0;
+            currentMatch.statsData[currentQuarter][player][stat]=nv;
+            if (stat==="Tir réussi"){
+                currentMatch.statsData[currentQuarter][player]["Tir Tenté"]+=delta;
+                if(currentMatch.statsData[currentQuarter][player]["Tir Tenté"]<0)currentMatch.statsData[currentQuarter][player]["Tir Tenté"]=0;
+            } else if (stat==="3PT réussi"){
+                currentMatch.statsData[currentQuarter][player]["3PT tenté"]+=delta;
+                if(currentMatch.statsData[currentQuarter][player]["3PT tenté"]<0)currentMatch.statsData[currentQuarter][player]["3PT tenté"]=0;
+            } else if (stat==="Lancer franc réussi"){
+                currentMatch.statsData[currentQuarter][player]["Lancer franc Tenté"]+=delta;
+                if(currentMatch.statsData[currentQuarter][player]["Lancer franc Tenté"]<0)currentMatch.statsData[currentQuarter][player]["Lancer franc Tenté"]=0;
+            }
+            generateTable();
+        }
+        function onQuarterChange(){ currentQuarter=document.getElementById('quarter').value; generateTable(); }
+        function validateMatchSetup(){
+            const date=document.getElementById('match-date').value;
+            const opp=document.getElementById('opponent').value.trim();
+            const loc=document.getElementById('location').value;
+            const vid=document.getElementById('video-name').value.trim();
+            const time=document.getElementById('time-left').value.trim();
+            if(!date||!opp){ alert("Veuillez renseigner la date et l'adversaire."); return; }
+            currentMatch.date=date; currentMatch.opponent=opp; currentMatch.location=loc; currentMatch.video=vid; currentMatch.timeLeft=time;
+            document.getElementById('match-info').innerHTML=`<strong>Date :</strong> ${date} | <strong>Adversaire :</strong> ${opp} | <strong>Lieu :</strong> ${loc} | <strong>Vidéo :</strong> ${vid} | <strong>Temps restant :</strong> ${time}`;
+            generateTable();
+        }
+        // ---- export / import
+        function exportCSV(){/* identique à ton code actuel */}
+        function exportJSON(){/* identique à ton code actuel */}
+        function loadMatchFromFile(event){/* identique à ton code actuel */}
+    </script>
+    <script>
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js")
+      .then(() => console.log("Service Worker enregistré"))
+      .catch(err => console.error("Erreur SW:", err));
+}
+</script>
+</body>
+</html>
