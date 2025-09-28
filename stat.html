@@ -309,8 +309,10 @@ button {
             html += `</tr></tbody></table>`;
 
             // Injecter les deux tableaux
-            document.getElementById('table-container').innerHTML = html;
-            document.getElementById('table-container').innerHTML += generateSummaryForCurrentMatch();
+            document.getElementById('table-container').innerHTML =
+  `<div class="table-wrapper">${html}</div>` +
+  `<div class="table-wrapper">${generateSummaryForCurrentMatch()}</div>`;
+
         }
 
         // ---- TABLEAU RECAP MATCH
