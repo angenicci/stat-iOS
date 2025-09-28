@@ -12,6 +12,57 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Stat Match Basket</title>
     <style>
+        /* Style général des tableaux */
+table {
+  border-collapse: collapse;
+  margin-top: 20px;
+  width: 100%;
+  min-width: 600px; /* garde de la lisibilité sur mobile */
+}
+
+/* Scroll horizontal pour les tableaux */
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* fluide sur iPhone */
+}
+
+/* Cellules */
+th, td {
+  border: 1px solid #444;
+  padding: 6px 10px;
+  text-align: center;
+  white-space: nowrap; /* évite que le texte casse et déforme */
+}
+
+/* Boutons plus lisibles sur mobile */
+button {
+  padding: 10px 16px;
+  font-size: 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Responsive mobile */
+@media (max-width: 768px) {
+  body {
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  th, td {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
+  input, select {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  #match-setup label {
+    display: block;
+    margin-top: 10px;
+  }
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
